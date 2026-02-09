@@ -7,12 +7,18 @@ import {
   X,
   CheckCircle2,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { usePreEntrada, type PreEntradaItem } from "../hooks/usePreEntrada";
 
 const PreEnrtada = () => {
   const [abrir, setAbrir] = useState(false);
-  const [notaSelecionada, setNotaSelecionada] = useState<PreEntradaItem | null>(null);
+  const [notaSelecionada, setNotaSelecionada] = useState<PreEntradaItem | null>(
+    null,
+  );
+
+  // ✅ filtros
+  const [filialSelecionada, setFilialSelecionada] = useState<string>("TODAS");
+  const [pesquisa, setPesquisa] = useState("");
 
   const { data, total, savingCreate, createEntradaNota } = usePreEntrada();
 
@@ -39,6 +45,35 @@ const PreEnrtada = () => {
     }
   };
 
+  // ✅ filiais únicas (sem repetir)
+  const filiaisUnicas = useMemo(() => {
+    const set = new Set<number>();
+    for (const p of data) set.add(Number(p.filial));
+    return Array.from(set).sort((a, b) => a - b);
+  }, [data]);
+
+  // ✅ aplicar filtro + pesquisa (fornecedor + numNota)
+  const dataFiltrada = useMemo(() => {
+    const q = pesquisa.trim().toLowerCase();
+
+    return data.filter((p) => {
+      const okFilial =
+        filialSelecionada === "TODAS" ||
+        String(p.filial) === String(filialSelecionada);
+
+      if (!okFilial) return false;
+
+      if (!q) return true;
+
+      const fornecedor = String(p.fornecedor ?? "").toLowerCase();
+      const numNota = String(p.numNota ?? "").toLowerCase();
+
+      return fornecedor.includes(q) || numNota.includes(q);
+    });
+  }, [data, filialSelecionada, pesquisa]);
+
+  const totalFiltrado = dataFiltrada.length;
+
   return (
     <div className="bg-zinc-950 h-screen flex flex-col overflow-hidden text-zinc-100">
       {/* Header */}
@@ -53,15 +88,91 @@ const PreEnrtada = () => {
           </div>
         </div>
 
-        <div className="text-xs bg-black/25 px-3 py-2 rounded-xl border border-white/10">
-          <span className="font-semibold">Total:</span> <span>{total}</span>
+        <div className="text-xs bg-black/25 px-3 py-2 rounded-xl border border-white/10 text-right">
+          <div>
+            <span className="font-semibold">Mostrando:</span>{" "}
+            <span>{totalFiltrado}</span>
+          </div>
+          <div className="text-[11px] text-red-100/70">
+            Total geral: <span className="font-semibold">{total}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="w-full max-w-7xl mx-auto px-4 pt-4 shrink-0">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Select Filial */}
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-400">Filial</span>
+              <select
+                value={filialSelecionada}
+                onChange={(e) => setFilialSelecionada(e.target.value)}
+                className="h-11 rounded-xl bg-zinc-950 border border-zinc-800 px-3 text-sm outline-none focus:border-red-500/60"
+              >
+                <option value="TODAS">Todas</option>
+                {filiaisUnicas.map((f) => (
+                  <option key={f} value={String(f)}>
+                    Filial {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Pesquisa */}
+            <div className="flex flex-col gap-1 md:col-span-2">
+              <span className="text-xs text-zinc-400">
+                Pesquisar (Fornecedor ou Nº Nota)
+              </span>
+              <input
+                value={pesquisa}
+                onChange={(e) => setPesquisa(e.target.value)}
+                placeholder="Ex: colina, agrofrut, 1652..."
+                className="h-11 rounded-xl bg-zinc-950 border border-zinc-800 px-3 text-sm outline-none focus:border-red-500/60"
+              />
+            </div>
+          </div>
+
+          {/* limpar rápido */}
+          {(filialSelecionada !== "TODAS" || pesquisa.trim()) && (
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-zinc-500">
+                Filtro ativo:{" "}
+                <span className="text-zinc-200 font-semibold">
+                  {filialSelecionada === "TODAS"
+                    ? "Todas"
+                    : `Filial ${filialSelecionada}`}
+                </span>
+                {pesquisa.trim() ? (
+                  <>
+                    {" "}
+                    · Pesquisa:{" "}
+                    <span className="text-zinc-200 font-semibold">
+                      {pesquisa.trim()}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+
+              <button
+                onClick={() => {
+                  setFilialSelecionada("TODAS");
+                  setPesquisa("");
+                }}
+                className="text-xs px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+              >
+                Limpar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Lista */}
       <div className="w-full max-w-7xl mx-auto flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-3">
-          {data.map((p) => (
+          {dataFiltrada.map((p) => (
             <button
               key={`${p.filial}-${p.numNota}-${p.codFornec}`}
               onClick={() => abrirModal(p)}
@@ -96,6 +207,15 @@ const PreEnrtada = () => {
               </div>
             </button>
           ))}
+
+          {dataFiltrada.length === 0 && (
+            <div className="text-center py-10 text-zinc-400">
+              <p className="font-semibold text-zinc-200">Nada encontrado</p>
+              <p className="text-sm">
+                Tente trocar a filial ou ajustar a pesquisa.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -112,7 +232,9 @@ const PreEnrtada = () => {
 
           <button className="flex justify-center items-center gap-2 h-12 rounded-2xl bg-zinc-800 hover:bg-zinc-700 transition font-semibold text-zinc-200 border border-zinc-700">
             <AlertTriangle className="w-5 h-5 text-amber-400" />
-            <a href="https://api.whatsapp.com/send/?phone=5591992536958&text=Olá%2C+não+encontrei+a+NF&type=phone_number&app_absent=0">Não tem entrada</a>
+            <a href="https://api.whatsapp.com/send/?phone=5591992536958&text=Olá%2C+não+encontrei+a+NF&type=phone_number&app_absent=0">
+              Não tem Pre-entrada
+            </a>
           </button>
         </div>
       </div>
